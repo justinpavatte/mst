@@ -1,48 +1,71 @@
 <!doctype html>
 <html lang="en">
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Monthly Sales Tax Calc</title>
-
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Monthly Sales Tax Calc</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
 <body>
   <h1>Monthly Sales Tax Calc</h1>
 
-  <label>Gross Sales ($)
+  <label>
+    Gross Sales ($)
     <input type="number" id="grossSales" step="0.01">
   </label>
 
+  <label>
+    Exempt Transactions ($)
+    <input type="number" id="exemptAmt" step="0.01">
+  </label>
+
   <h3>Single items over $1,600</h3>
-  <div id="highItems"></div>
+  <div id="highItems" class="panel"></div>
   <button id="addItem" type="button">Add Item</button>
   <button id="calc" type="button">Calculate</button>
 
   <hr>
 
-  <h2>Summary</h2>
-  <div style="border:1px solid #ccc;padding:8px;max-width:480px;">
-    <p>Gross Sales: <strong id="outGross">0</strong></p>
-    <p>State Tax (7%): <strong id="outState">0</strong></p>
-    <p>Local Tax (2.25%): <strong id="outLocal">0</strong></p>
-    <p>Addon local / single-article (2.75%): <strong id="outExtra">0</strong></p>
-    <p><b>Total Tax:</b> <strong id="outTotal">0</strong></p>
+  <h2>Return Lines</h2>
+  <div class="panel panel-narrow">
+    <div class="mono-line"><span>1. Gross sales (Schedule A)</span><span id="ln1">0</span></div>
+    <div class="mono-line"><span>5. Gross sales carried forward</span><span id="ln5">0</span></div>
+    <div class="mono-line"><span>6. Exempt transactions</span><span id="ln6">0</span></div>
+    <div class="mono-line"><span>7. Net taxable total</span><span id="ln7">0</span></div>
+    <div class="mono-line"><span>8. State tax @ 7%</span><span id="ln8">0</span></div>
+    <div class="mono-line"><span>10. Local tax (from Schedule B)</span><span id="ln10">0</span></div>
+    <div class="mono-line"><span>12. Addon / single-article (from Schedule C)</span><span id="ln12">0</span></div>
+    <div class="mono-line"><span>14. Total tax</span><span id="ln14">0</span></div>
+    <div class="mono-line"><span>19. Total tax carried forward</span><span id="ln19">0</span></div>
+  </div>
+
+  <h2>Schedule A</h2>
+  <div class="panel panel-med">
+    <div class="mono-line"><span>Line C. Exempt amount</span><span id="sa_c">0</span></div>
+    <div class="mono-line"><span>Line K. Exempt amount (carried)</span><span id="sa_k">0</span></div>
   </div>
 
   <h2>Schedule B – Local Sales and Use Tax</h2>
-  <div style="border:1px solid #ccc;padding:8px;max-width:650px;font-family:monospace;">
-    <p>Taxable total (state base):      <span id="sb_taxable">0</span></p>
-    <p>Less excess over $1,600 items:   <span id="sb_excess">0</span></p>
-    <p>New taxable total (local base):  <span id="sb_new">0</span></p>
-    <p>Local sales and use tax @ 2.25%: <span id="sb_local">0</span></p>
+  <div class="panel panel-wide">
+    <div class="mono-line"><span>Line 1. Net taxable total</span><span id="sb_1">0</span></div>
+    <div class="mono-line"><span>Line 2. Less excess over $1,600 items</span><span id="sb_2">0</span></div>
+    <div class="mono-line"><span>Line 7. New taxable total (local base)</span><span id="sb_7">0</span></div>
+    <div class="mono-line"><span>Line 8. Local sales and use tax @ 2.25%</span><span id="sb_8">0</span></div>
   </div>
 
   <h2>Schedule C – Single Article / Special</h2>
-  <div style="border:1px solid #ccc;padding:8px;max-width:650px;font-family:monospace;">
-    <p>Taxable portion $1,600.01–$3,200: <span id="sc_base">0</span></p>
-    <p>State tax @ 2.75%:                <span id="sc_tax">0</span></p>
+  <div class="panel panel-wide">
+    <div class="mono-line"><span>Line 1. Taxable portion $1,600.01–$3,200</span><span id="sc_1">0</span></div>
+    <div class="mono-line"><span>Line 2. State tax @ 2.75%</span><span id="sc_2">0</span></div>
   </div>
 
   <script>
     const highContainer = document.getElementById('highItems')
+
+    // Focus gross sales input when page loads
+    window.addEventListener('DOMContentLoaded', () => {
+      document.getElementById('grossSales').focus()
+    })
 
     function addHighItem(value = '') {
       const input = document.createElement('input')
@@ -50,16 +73,22 @@
       input.step = '0.01'
       input.placeholder = 'Item amount'
       input.className = 'hi'
-      if (value) input.value = value
       highContainer.appendChild(input)
       highContainer.appendChild(document.createElement('br'))
+      if (value) input.value = value
+      setTimeout(() => input.focus(), 0)
     }
 
     document.getElementById('addItem').onclick = () => addHighItem()
 
+    function r(n) {
+      return Math.round(n) || 0
+    }
+
     document.getElementById('calc').onclick = () => {
       const gross = parseFloat(document.getElementById('grossSales').value) || 0
-      const stateTax = Math.round(gross * 0.07)
+      const exempt = parseFloat(document.getElementById('exemptAmt').value) || 0
+      const netTaxable = Math.max(0, gross - exempt)
 
       let totalExcessForLocal = 0
       let totalExtraPortion = 0
@@ -67,33 +96,40 @@
       hi.forEach(i => {
         const v = parseFloat(i.value)
         if (!isNaN(v) && v > 1600) {
-          totalExcessForLocal += v - 1600
+          totalExcessForLocal += (v - 1600)
           const extraRange = Math.min(v, 3200) - 1600
-          if (extraRange > 0) totalExtraPortion += extraRange
+          if (extraRange > 0) {
+            totalExtraPortion += extraRange
+          }
         }
       })
 
-      const localBase = Math.max(0, gross - totalExcessForLocal)
-      const localTax = Math.round(localBase * 0.0225)
-      const extraTax = Math.round(totalExtraPortion * 0.0275)
+      const stateTax = r(netTaxable * 0.07)
+      const localBase = Math.max(0, netTaxable - totalExcessForLocal)
+      const localTax = r(localBase * 0.0225)
+      const extraTax = r(totalExtraPortion * 0.0275)
       const totalTax = stateTax + localTax + extraTax
 
-      // Summary
-      document.getElementById('outGross').textContent = gross
-      document.getElementById('outState').textContent = stateTax
-      document.getElementById('outLocal').textContent = localTax
-      document.getElementById('outExtra').textContent = extraTax
-      document.getElementById('outTotal').textContent = totalTax
+      document.getElementById('ln1').textContent = r(gross)
+      document.getElementById('ln5').textContent = r(gross)
+      document.getElementById('ln6').textContent = r(exempt)
+      document.getElementById('ln7').textContent = r(netTaxable)
+      document.getElementById('ln8').textContent = stateTax
+      document.getElementById('ln10').textContent = localTax
+      document.getElementById('ln12').textContent = extraTax
+      document.getElementById('ln14').textContent = totalTax
+      document.getElementById('ln19').textContent = totalTax
 
-      // Schedule B
-      document.getElementById('sb_taxable').textContent = gross
-      document.getElementById('sb_excess').textContent = totalExcessForLocal
-      document.getElementById('sb_new').textContent = localBase
-      document.getElementById('sb_local').textContent = localTax
+      document.getElementById('sa_c').textContent = r(exempt)
+      document.getElementById('sa_k').textContent = r(exempt)
 
-      // Schedule C
-      document.getElementById('sc_base').textContent = totalExtraPortion
-      document.getElementById('sc_tax').textContent = extraTax
+      document.getElementById('sb_1').textContent = r(netTaxable)
+      document.getElementById('sb_2').textContent = r(totalExcessForLocal)
+      document.getElementById('sb_7').textContent = r(localBase)
+      document.getElementById('sb_8').textContent = localTax
+
+      document.getElementById('sc_1').textContent = r(totalExtraPortion)
+      document.getElementById('sc_2').textContent = extraTax
     }
   </script>
 </body>
